@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <title>我的坦克大冒险 - 完整版</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
     <div id="game-container">
         <div id="ui" class="game-panel"><span style="color:#FFD700">🪙</span> 金币: <span id="money">0</span></div>
-        
+
         <div id="gameOver" class="msg">
             <h1 style="color: #ff4444;">坦克被炸毁了！</h1>
             <p>别灰心，重新开始挑战吧！</p>
@@ -20,23 +22,35 @@
             <h2>坦克大作战 - 玩家登入</h2>
             <div style="margin-bottom: 20px; text-align: left;">
                 <label>请输入你的指挥官代号：</label>
-                <textarea id="usernameInput" placeholder="请输入你的指挥官大名..." autocomplete="off" spellcheck="false" rows="1" style="width: 100%; padding: 10px; margin-top: 5px; border-radius: 5px; border: 1px solid #4CAF50; background: #222; color: white; outline: none; resize: none; overflow: hidden; white-space: nowrap; display: block; font-family: inherit; font-size: inherit;" onkeydown="if(event.keyCode===13){event.preventDefault();handleLogin();}"></textarea>
+                <textarea id="usernameInput" placeholder="请输入你的指挥官大名..." autocomplete="off" spellcheck="false" rows="1"
+                    style="width: 100%; padding: 10px; margin-top: 5px; border-radius: 5px; border: 1px solid #4CAF50; background: #222; color: white; outline: none; resize: none; overflow: hidden; white-space: nowrap; display: block; font-family: inherit; font-size: inherit;"
+                    onkeydown="if(event.keyCode===13){event.preventDefault();handleLogin();}"></textarea>
             </div>
-            
+
             <div id="userListContainer" style="margin-bottom: 20px; text-align: left; display: none;">
                 <label style="font-size: 0.8em; color: #888;">或是从历史战友中选择：</label>
                 <div id="userList" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
                     <!-- 动态生成用户列表 -->
                 </div>
             </div>
-            <p>🚀 <b>移动：</b> 使用 <span class="key">A</span> <span class="key">D</span> 或 <span class="key">←</span> <span class="key">→</span></p>
+            <p>🚀 <b>移动：</b> 使用 <span class="key">A</span> <span class="key">D</span> 或 <span class="key">←</span> <span
+                    class="key">→</span></p>
             <p>⚡ <b>加速：</b> 按住 <span class="key">Shift</span> 疾驰</p>
             <p>🎯 <b>射击：</b> 使用 <span class="key">Space</span> 空格键</p>
-            <button onclick="handleLogin()">进入游戏</button>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button onclick="handleLogin()">进入游戏</button>
+                <button onclick="document.getElementById('importInput').click()" style="background: #444;">📂
+                    导入历史记录</button>
+            </div>
+            <input type="file" id="importInput" style="display: none;" accept=".json" onchange="importData(event)">
         </div>
 
-        <div id="userBadge" class="game-panel" style="top: 80px; left: 20px; font-size: 14px; cursor: pointer; display: none;" onclick="logout()">
-            👤 指挥官: <span id="currentUsername">未登入</span> (退出)
+        <div id="userBadge" class="game-panel"
+            style="top: 80px; left: 20px; font-size: 14px; display: none; align-items: center; gap: 10px;">
+            <div onclick="logout()" style="cursor: pointer;">👤 指挥官: <span id="currentUsername">未登入</span> (退出)</div>
+            <button onclick="exportData()"
+                style="padding: 2px 8px; font-size: 12px; background: #444; border: 1px solid #666; color: #fff; cursor: pointer; border-radius: 4px;">💾
+                导出记录文件</button>
         </div>
 
         <button id="shopBtn" class="game-panel" style="display: none;" onclick="toggleShop()">🛒 坦克商店</button>
@@ -52,4 +66,5 @@
 
     <script src="game.js"></script>
 </body>
+
 </html>

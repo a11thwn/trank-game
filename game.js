@@ -180,28 +180,47 @@ function handleLogin() {
 
 function saveUserToList(user) {
   let list = JSON.parse(localStorage.getItem("tank_user_list")) || [];
-  if (!list.includes(user)) {
-    list.push(user);
-    localStorage.setItem("tank_user_list", JSON.stringify(list));
+  // 兼容旧的字符串列表，统一转为对象形式
+  list = list.map((item) =>
+    typeof item === "string" ? { name: item, money: 0 } : item
+  );
+
+  let userData = list.find((u) => u.name === user);
+  if (!userData) {
+    userData = { name: user, money: money, lastSeen: Date.now() };
+    list.push(userData);
+  } else {
+    userData.money = money; // 更新金币
+    userData.lastSeen = Date.now();
   }
+
+  localStorage.setItem("tank_user_list", JSON.stringify(list));
 }
 
 function renderUserList() {
-  const list = JSON.parse(localStorage.getItem("tank_user_list")) || [];
+  const rawList = JSON.parse(localStorage.getItem("tank_user_list")) || [];
   const container = document.getElementById("userListContainer");
   const listEl = document.getElementById("userList");
-  
-  if (list.length > 0) {
+
+  if (rawList.length > 0) {
     container.style.display = "block";
     listEl.innerHTML = "";
-    list.forEach(user => {
+    // 转换为对象并排序
+    const list = rawList
+      .map((u) => (typeof u === "string" ? { name: u, money: 0 } : u))
+      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+
+    list.forEach((user) => {
       const span = document.createElement("span");
-      span.innerText = user;
-      span.style.cssText = "background: #333; padding: 4px 12px; border-radius: 15px; border: 1px solid #555; cursor: pointer; font-size: 0.8em; transition: 0.2s;";
-      span.onmouseover = () => span.style.borderColor = "#4CAF50";
-      span.onmouseout = () => span.style.borderColor = "#555";
+      span.innerHTML = `${user.name} <small style="color:#FFD700;margin-left:5px;">🪙${formatMoney(
+        user.money || 0
+      )}</small>`;
+      span.style.cssText =
+        "background: #333; padding: 6px 15px; border-radius: 15px; border: 1px solid #555; cursor: pointer; font-size: 0.85em; transition: 0.2s; display: flex; align-items: center; margin: 4px;";
+      span.onmouseover = () => (span.style.borderColor = "#4CAF50");
+      span.onmouseout = () => (span.style.borderColor = "#555");
       span.onclick = () => {
-        document.getElementById("usernameInput").value = user;
+        document.getElementById("usernameInput").value = user.name;
         handleLogin();
       };
       listEl.appendChild(span);
@@ -211,16 +230,18 @@ function renderUserList() {
 
 function loadUserData() {
   if (!currentUser) return;
-  
+
   // 使用用户名作为前缀来存储数据
   currentModelKey = localStorage.getItem(`${currentUser}_current_tank`) || "R";
-  ownedTanks = JSON.parse(localStorage.getItem(`${currentUser}_owned_tanks`)) || ["R"];
+  ownedTanks = JSON.parse(
+    localStorage.getItem(`${currentUser}_owned_tanks`)
+  ) || ["R"];
   money = parseInt(localStorage.getItem(`${currentUser}_money`)) || 0;
-  
+
   // 更新坦克对象
   const m = TANK_MODELS[currentModelKey];
   tank = { ...m, x: tank.x, y: tank.y };
-  
+
   // 更新 UI
   document.getElementById("currentUsername").innerText = currentUser;
   document.getElementById("userBadge").style.display = "flex";
@@ -231,6 +252,62 @@ function loadUserData() {
 function logout() {
   localStorage.removeItem("current_session_user");
   location.reload(); // 刷新页面回到登录界面
+}
+
+// 导出记录到文件
+function exportData() {
+  const data = {
+    currentUser: currentUser,
+    allUsers: JSON.parse(localStorage.getItem("tank_user_list")) || [],
+    timestamp: new Date().toLocaleString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tank_game_records_${currentUser || "unknown"}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// 从文件导入记录
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.allUsers || !Array.isArray(data.allUsers)) {
+        throw new Error("格式错误，无法识别的记录文件！");
+      }
+
+      // 1. 恢复用户总列表
+      localStorage.setItem("tank_user_list", JSON.stringify(data.allUsers));
+
+      // 2. 依次恢复每个用户的详细数据
+      data.allUsers.forEach((user) => {
+        if (user.name) {
+          // 如果文件里有明确的 money，就覆盖，没有就用 0
+          const m = user.money !== undefined ? user.money : 0;
+          localStorage.setItem(`${user.name}_money`, m);
+          // 如果有坦克数据也可以在这里恢复
+          if (user.tank) {
+            localStorage.setItem(`${user.name}_current_tank`, user.tank);
+          }
+        }
+      });
+
+      alert("🎉 记录导入成功！页面即将刷新...");
+      location.reload();
+    } catch (err) {
+      alert("❌ 导入失败: " + err.message);
+    }
+  };
+  reader.readAsText(file);
 }
 
 // 游戏变量
@@ -251,6 +328,8 @@ function updateMoney(amount) {
   money += amount;
   localStorage.setItem(`${currentUser}_money`, money);
   moneyEl.innerText = formatMoney(money);
+  // 同步更新历史记录列表中的数据
+  saveUserToList(currentUser);
 }
 
 let isGameOver = false;
@@ -437,8 +516,8 @@ function renderShop() {
     div.innerHTML = `
             <div class="preview">
                 <div style="width: ${m.width * 0.6}px; height: ${
-      m.height * 0.6
-    }px; background: ${m.color}; border: 2px solid #222;"></div>
+                  m.height * 0.6
+                }px; background: ${m.color}; border: 2px solid #222;"></div>
             </div>
             <h3>${m.name}</h3>
             <div class="price">${
@@ -469,7 +548,10 @@ function buyTank(key) {
     localStorage.setItem(`${currentUser}_money`, money);
     moneyEl.innerText = formatMoney(money);
     ownedTanks.push(key);
-    localStorage.setItem(`${currentUser}_owned_tanks`, JSON.stringify(ownedTanks));
+    localStorage.setItem(
+      `${currentUser}_owned_tanks`,
+      JSON.stringify(ownedTanks)
+    );
     AudioEngine.playEffect(600, "sine", 0.5, 0.2); // 购买成功音效
     selectTank(key);
     renderShop();
@@ -489,9 +571,6 @@ function selectTank(key) {
 
 function resetGame() {
   tank.x = 400;
-  money = 0;
-  localStorage.setItem(`${currentUser}_money`, 0);
-  moneyEl.innerText = "0";
   bullets = [];
   bombs = [];
   coins = [];
