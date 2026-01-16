@@ -37,10 +37,12 @@
                     class="key">→</span></p>
             <p>⚡ <b>加速：</b> 按住 <span class="key">Shift</span> 疾驰</p>
             <p>🎯 <b>射击：</b> 使用 <span class="key">Space</span> 空格键</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                 <button onclick="handleLogin()">进入游戏</button>
+                <button onclick="exportData()" style="background: #4CAF50;">💾
+                    导出记录</button>
                 <button onclick="document.getElementById('importInput').click()" style="background: #444;">📂
-                    导入历史记录</button>
+                    导入记录</button>
             </div>
             <input type="file" id="importInput" style="display: none;" accept=".json" onchange="importData(event)">
         </div>
@@ -48,9 +50,6 @@
         <div id="userBadge" class="game-panel"
             style="top: 80px; left: 20px; font-size: 14px; display: none; align-items: center; gap: 10px;">
             <div onclick="logout()" style="cursor: pointer;">👤 指挥官: <span id="currentUsername">未登入</span> (退出)</div>
-            <button onclick="exportData()"
-                style="padding: 2px 8px; font-size: 12px; background: #444; border: 1px solid #666; color: #fff; cursor: pointer; border-radius: 4px;">💾
-                导出记录文件</button>
         </div>
 
         <button id="shopBtn" class="game-panel" style="display: none;" onclick="toggleShop()">🛒 坦克商店</button>

@@ -163,7 +163,7 @@ const TANK_MODELS = {
 let currentUser = localStorage.getItem("current_session_user") || "";
 let currentModelKey = "R";
 let ownedTanks = ["R"];
-let money = 0;
+let money = "0"; // 金币使用字符串存储，支持超大数值
 
 function handleLogin() {
   const input = document.getElementById("usernameInput").value.trim();
@@ -212,7 +212,9 @@ function renderUserList() {
 
     list.forEach((user) => {
       const span = document.createElement("span");
-      span.innerHTML = `${user.name} <small style="color:#FFD700;margin-left:5px;">🪙${formatMoney(
+      span.innerHTML = `${
+        user.name
+      } <small style="color:#FFD700;margin-left:5px;">🪙${formatMoney(
         user.money || 0
       )}</small>`;
       span.style.cssText =
@@ -236,7 +238,7 @@ function loadUserData() {
   ownedTanks = JSON.parse(
     localStorage.getItem(`${currentUser}_owned_tanks`)
   ) || ["R"];
-  money = parseInt(localStorage.getItem(`${currentUser}_money`)) || 0;
+  money = localStorage.getItem(`${currentUser}_money`) || "0";
 
   // 更新坦克对象
   const m = TANK_MODELS[currentModelKey];
@@ -256,9 +258,27 @@ function logout() {
 
 // 导出记录到文件
 function exportData() {
+  const allUsers = JSON.parse(localStorage.getItem("tank_user_list")) || [];
+
+  // 为每个用户收集完整的存档数据
+  const usersData = allUsers.map((user) => {
+    const userName = typeof user === "string" ? user : user.name;
+    // 确保 money 始终以字符串形式导出，避免 JSON 中超大数字精度丢失
+    const moneyStr = localStorage.getItem(`${userName}_money`) || "0";
+    return {
+      name: userName,
+      money: moneyStr, // 保持字符串格式
+      currentTank: localStorage.getItem(`${userName}_current_tank`) || "R",
+      ownedTanks: JSON.parse(
+        localStorage.getItem(`${userName}_owned_tanks`)
+      ) || ["R"],
+      lastSeen: typeof user === "string" ? 0 : user.lastSeen || 0,
+    };
+  });
+
   const data = {
     currentUser: currentUser,
-    allUsers: JSON.parse(localStorage.getItem("tank_user_list")) || [],
+    allUsers: usersData,
     timestamp: new Date().toLocaleString(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -267,7 +287,21 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `tank_game_records_${currentUser || "unknown"}.json`;
+
+  // 生成时间后缀：YYYYMMDD_HHMMSS
+  const now = new Date();
+  const dateStr =
+    now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0");
+  const timeStr =
+    String(now.getHours()).padStart(2, "0") +
+    String(now.getMinutes()).padStart(2, "0") +
+    String(now.getSeconds()).padStart(2, "0");
+
+  a.download = `tank_game_records_${
+    currentUser || "unknown"
+  }_${dateStr}_${timeStr}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -285,18 +319,62 @@ function importData(event) {
         throw new Error("格式错误，无法识别的记录文件！");
       }
 
-      // 1. 恢复用户总列表
-      localStorage.setItem("tank_user_list", JSON.stringify(data.allUsers));
+      // 辅助函数：将任意格式的金币值转换为有效的 BigInt 字符串
+      function normalizeMoney(value) {
+        if (value === undefined || value === null) return "0";
+        const str = String(value);
+        // 处理科学计数法（如 1.1231e+25）
+        if (str.includes("e") || str.includes("E")) {
+          try {
+            // 使用 Number 解析后转为 BigInt 可能丢失精度，所以手动处理
+            const match = str.match(/^([\d.]+)[eE]\+?(\d+)$/);
+            if (match) {
+              const base = match[1].replace(".", "");
+              const exp = parseInt(match[2]);
+              const decimalPlaces = (match[1].split(".")[1] || "").length;
+              const zerosToAdd = exp - decimalPlaces;
+              return base + "0".repeat(Math.max(0, zerosToAdd));
+            }
+          } catch (e) {
+            console.warn("无法解析金币值:", str);
+          }
+        }
+        // 尝试直接转换为 BigInt 验证格式
+        try {
+          return BigInt(str).toString();
+        } catch (e) {
+          // 如果还是失败，返回 0
+          console.warn("金币值无效，重置为 0:", str);
+          return "0";
+        }
+      }
 
-      // 2. 依次恢复每个用户的详细数据
+      // 1. 恢复用户总列表（转换为简化的对象形式用于显示）
+      const userList = data.allUsers.map((user) => ({
+        name: user.name,
+        money: normalizeMoney(user.money), // 使用标准化函数
+        lastSeen: user.lastSeen || Date.now(),
+      }));
+      localStorage.setItem("tank_user_list", JSON.stringify(userList));
+
+      // 2. 依次恢复每个用户的详细数据（包括商店数据）
       data.allUsers.forEach((user) => {
         if (user.name) {
-          // 如果文件里有明确的 money，就覆盖，没有就用 0
-          const m = user.money !== undefined ? user.money : 0;
+          // 恢复金币（确保转换为有效的 BigInt 字符串）
+          const m = normalizeMoney(user.money);
           localStorage.setItem(`${user.name}_money`, m);
-          // 如果有坦克数据也可以在这里恢复
-          if (user.tank) {
-            localStorage.setItem(`${user.name}_current_tank`, user.tank);
+
+          // 恢复当前使用的坦克
+          if (user.currentTank) {
+            localStorage.setItem(`${user.name}_current_tank`, user.currentTank);
+          }
+
+          // 恢复已拥有的坦克列表（商店数据）
+          if (user.ownedTanks && Array.isArray(user.ownedTanks)) {
+            localStorage.setItem(
+              `${user.name}_owned_tanks`,
+              JSON.stringify(user.ownedTanks)
+            );
           }
         }
       });
@@ -313,19 +391,70 @@ function importData(event) {
 // 游戏变量
 let tank = { ...TANK_MODELS["R"], x: 400, y: 520 };
 
-// 金币格式化函数
+// 金币格式化函数 - 支持中文大数单位和超大数值
 function formatMoney(n) {
-  if (n >= 100000000) {
-    return (n / 100000000).toFixed(1) + "亿";
-  } else if (n >= 10000) {
-    return (n / 10000).toFixed(1) + "万";
+  // 接受 number 或 string/BigInt 作为输入
+  let numStr = typeof n === "string" ? n : n.toString();
+  let bn;
+
+  try {
+    bn = BigInt(numStr);
+  } catch (e) {
+    // 如果转换失败（比如包含小数），返回原值
+    return numStr;
   }
-  return n.toString();
+
+  // 零值特殊处理
+  if (bn === 0n) return "0";
+
+  // 定义大数单位（使用 BigInt）
+  // 从"万"开始使用单位，因为"千"的格式化可能不太直观
+  const units = [
+    { name: "万", value: 10000n },
+    { name: "亿", value: 100000000n },
+    { name: "兆", value: 1000000000000n },
+    { name: "京", value: 10000000000000000n },
+    { name: "垓", value: 100000000000000000000n },
+    { name: "秭", value: 1000000000000000000000000n },
+    { name: "穰", value: 10000000000000000000000000000n },
+    { name: "沟", value: 100000000000000000000000000000000n },
+    { name: "涧", value: 1000000000000000000000000000000000000n },
+    { name: "正", value: 10000000000000000000000000000000000000000n },
+    { name: "载", value: 100000000000000000000000000000000000000000000n },
+  ];
+
+  // 从大到小查找最合适的单位
+  for (let i = units.length - 1; i >= 0; i--) {
+    const unit = units[i];
+    if (bn >= unit.value) {
+      // 使用 BigInt 除法得到整数部分
+      const integerPart = bn / unit.value;
+      // 使用取余得到小数部分（取前2位）
+      const remainder = bn % unit.value;
+      const decimalPart = (remainder * 100n) / unit.value;
+
+      if (decimalPart === 0n) {
+        return integerPart.toString() + unit.name;
+      } else {
+        return (
+          integerPart.toString() +
+          "." +
+          decimalPart.toString().padStart(2, "0") +
+          unit.name
+        );
+      }
+    }
+  }
+
+  return bn.toString();
 }
 
 // 保存并更新UI
 function updateMoney(amount) {
-  money += amount;
+  // 将当前金币和增加的金额都转为 BigInt 进行加法
+  const currentBn = BigInt(money || "0");
+  const addBn = BigInt(amount);
+  money = (currentBn + addBn).toString();
   localStorage.setItem(`${currentUser}_money`, money);
   moneyEl.innerText = formatMoney(money);
   // 同步更新历史记录列表中的数据
@@ -507,7 +636,14 @@ function renderShop() {
   Object.keys(TANK_MODELS).forEach((key) => {
     const m = TANK_MODELS[key];
     const isOwned = ownedTanks.includes(key);
-    const canAfford = money >= m.price;
+    // 安全的金币比较，处理可能的无效值
+    let canAfford = false;
+    try {
+      canAfford = BigInt(money || "0") >= BigInt(m.price);
+    } catch (e) {
+      console.warn('金币值解析失败，视为无法购买:', money);
+      canAfford = false;
+    }
 
     const div = document.createElement("div");
     div.className = `shop-item ${
@@ -516,8 +652,8 @@ function renderShop() {
     div.innerHTML = `
             <div class="preview">
                 <div style="width: ${m.width * 0.6}px; height: ${
-                  m.height * 0.6
-                }px; background: ${m.color}; border: 2px solid #222;"></div>
+      m.height * 0.6
+    }px; background: ${m.color}; border: 2px solid #222;"></div>
             </div>
             <h3>${m.name}</h3>
             <div class="price">${
@@ -543,8 +679,11 @@ function renderShop() {
 
 function buyTank(key) {
   const price = TANK_MODELS[key].price;
-  if (money >= price) {
-    money -= price;
+  const currentBn = BigInt(money || "0");
+  const priceBn = BigInt(price);
+
+  if (currentBn >= priceBn) {
+    money = (currentBn - priceBn).toString();
     localStorage.setItem(`${currentUser}_money`, money);
     moneyEl.innerText = formatMoney(money);
     ownedTanks.push(key);
